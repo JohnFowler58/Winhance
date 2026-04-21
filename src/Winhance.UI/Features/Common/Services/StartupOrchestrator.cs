@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Winhance.Core.Features.Common.Constants;
 using Winhance.Core.Features.Common.Extensions;
@@ -64,10 +66,13 @@ public class StartupOrchestrator : IStartupOrchestrator
             await _settingsPreloader.PreloadAllSettingsAsync().ConfigureAwait(false);
             StartupLogger.Log("StartupOrchestrator", "Phase 1: Settings registry initialized");
 
-        // Initialize new badge service (version comparison for "NEW" badges)
+        // Initialize new badge service (data-driven: uses the highest AddedInVersion
+        // across the loaded registry to detect effective upgrades, so dev builds
+        // behave identically to release builds).
         try
         {
-            _newBadgeService.Initialize();
+            var allAddedInVersions = CollectAddedInVersions(_settingsRegistry);
+            _newBadgeService.Initialize(allAddedInVersions);
         }
         catch (Exception ex)
         {
@@ -160,5 +165,34 @@ public class StartupOrchestrator : IStartupOrchestrator
         StartupLogger.Log("StartupOrchestrator", "All phases complete");
 
         return new StartupResult { IsFirstLaunch = isFirstLaunch };
+    }
+
+    /// <summary>
+    /// Enumerates <c>AddedInVersion</c> across every setting in both the filtered
+    /// and bypassed maps of the registry. Duplicates are fine — the badge service
+    /// only cares about the maximum.
+    /// </summary>
+    private static IEnumerable<string?> CollectAddedInVersions(ICompatibleSettingsRegistry registry)
+    {
+        IReadOnlyDictionary<string, IEnumerable<SettingDefinition>>? filtered = null;
+        IReadOnlyDictionary<string, IEnumerable<SettingDefinition>>? bypassed = null;
+
+        try { filtered = registry.GetAllFilteredSettings(); } catch { /* registry not ready */ }
+        try { bypassed = registry.GetAllBypassedSettings(); } catch { /* registry not ready */ }
+
+        var results = new List<string?>();
+        if (filtered is not null)
+        {
+            foreach (var kvp in filtered)
+                foreach (var s in kvp.Value)
+                    results.Add(s.AddedInVersion);
+        }
+        if (bypassed is not null)
+        {
+            foreach (var kvp in bypassed)
+                foreach (var s in kvp.Value)
+                    results.Add(s.AddedInVersion);
+        }
+        return results;
     }
 }

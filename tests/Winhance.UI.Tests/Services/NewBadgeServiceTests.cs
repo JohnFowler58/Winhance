@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using Winhance.Core.Features.Common.Constants;
 using Winhance.Core.Features.Common.Interfaces;
 using Winhance.Core.Features.Common.Models;
 using Winhance.Infrastructure.Features.Common.Services;
@@ -31,85 +32,213 @@ public class NewBadgeServiceTests
               .ReturnsAsync(OperationResult.Succeeded());
     }
 
-    [Fact]
-    public void ShowNewBadges_DefaultsToTrue_OnFirstInit()
-    {
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
+    private NewBadgeService CreateSut() => new NewBadgeService(_prefs.Object, _log.Object);
 
-        sut.Initialize();
-
-        sut.ShowNewBadges.Should().BeTrue();
-    }
+    // --- Branch A: no stored HighestSeenAddedInVersion (first-ever install OR
+    //     returning user whose prefs predate the badge system — same treatment) ---
 
     [Fact]
-    public void ShowNewBadges_RemainsFalse_WhenSetFalseAndSameVersion()
+    public void NoStoredHighest_AllTaggedSettingsAreNew_AndSeedsHighestOnExit()
     {
-        // Arrange: simulate "same version" by pre-seeding LastRunVersion to current
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
-        sut.Initialize();                       // first run -> writes LastRunVersion
-        sut.ShowNewBadges = false;              // user toggles off
-
-        // Act: re-init with same version
-        var sut2 = new NewBadgeService(_prefs.Object, _log.Object);
-        sut2.Initialize();
-
-        // Assert: still false
-        sut2.ShowNewBadges.Should().BeFalse();
-    }
-
-    [Fact]
-    public void ShowNewBadges_ResetsToTrue_OnVersionUpgrade()
-    {
-        // Arrange: pretend last-run was an older version
-        _store["LastRunVersion"] = "0.0.1";
-        _store["NewBadgeBaseline"] = "0.0.1";
-        _store["ShowNewBadges"] = "False";
+        // Arrange: empty prefs store. Covers both first-ever installs and existing
+        // users whose preferences predate the badge system.
+        var sut = CreateSut();
 
         // Act
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
-        sut.Initialize();
+        sut.Initialize(new[] { "26.04.10", "26.03.01", (string?)null, "" });
 
-        // Assert
+        // Assert: baseline = 0.0.0 → every tagged setting shows as NEW
+        sut.IsSettingNew("26.04.10", "s1").Should().BeTrue();
+        sut.IsSettingNew("26.03.01", "s2").Should().BeTrue();
+
+        // Highest is seeded from the registry so the next run hits Branch B/C
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion].Should().Be("26.4.10");
+    }
+
+    [Fact]
+    public void NoStoredHighest_RespectsUserShowNewBadgesPreference()
+    {
+        // User previously turned NEW badges off — we must not flip it back on here.
+        _store[UserPreferenceKeys.ShowNewBadges] = "False";
+
+        var sut = CreateSut();
+        sut.Initialize(new[] { "26.04.10" });
+
+        sut.ShowNewBadges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void NoStoredHighest_WithNoTaggedSettings_DoesNotSeedHighest()
+    {
+        var sut = CreateSut();
+
+        sut.Initialize(Array.Empty<string?>());
+
+        _store.ContainsKey(UserPreferenceKeys.HighestSeenAddedInVersion).Should().BeFalse();
+        sut.IsSettingNew("26.04.10", "s1").Should().BeTrue(); // baseline 0.0.0
+    }
+
+    // --- Branch B: effective upgrade (registry highest > stored) ---
+
+    [Fact]
+    public void EffectiveUpgrade_ResetsShowNewBadges_AndUpdatesHighestSeen()
+    {
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion] = "26.03.01";
+        _store[UserPreferenceKeys.ShowNewBadges] = "False";
+
+        var sut = CreateSut();
+
+        sut.Initialize(new[] { "26.03.01", "26.04.20" });
+
+        // Baseline = stored (26.03.01); the new 26.04.20 setting should be flagged new
+        sut.IsSettingNew("26.04.20", "s1").Should().BeTrue();
+        sut.IsSettingNew("26.03.01", "s2").Should().BeFalse();
+
+        // Highest stored has advanced to the new max
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion].Should().Be("26.4.20");
+
+        // Global toggle forced back on
         sut.ShowNewBadges.Should().BeTrue();
     }
 
+    // --- Branch C: no upgrade since last run ---
+
     [Fact]
-    public void IsSettingNew_ReturnsTrue_WhenAddedAfterBaseline()
+    public void NoUpgrade_LoadsStoredBaseline_AndLeavesShowNewBadgesAlone()
     {
-        // First init writes LastRunVersion = whatever GetAppVersion() returns at runtime
-        new NewBadgeService(_prefs.Object, _log.Object).Initialize();
-        // Override baseline to be older than the test setting's version
-        _store["NewBadgeBaseline"] = "0.0.0";
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion] = "26.04.20";
+        _store[UserPreferenceKeys.ShowNewBadges] = "False";
 
-        // Second init: same version branch -> loads baseline = "0.0.0"
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
-        sut.Initialize();
+        var sut = CreateSut();
 
-        sut.IsSettingNew("26.04.10", "setting1").Should().BeTrue();
+        sut.Initialize(new[] { "26.04.20", "26.03.01" });
+
+        // Nothing exceeds the stored highest; no setting should be new
+        sut.IsSettingNew("26.04.20", "s1").Should().BeFalse();
+        sut.IsSettingNew("26.03.01", "s2").Should().BeFalse();
+
+        // ShowNewBadges untouched
+        sut.ShowNewBadges.Should().BeFalse();
+
+        // HighestSeen unchanged
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion].Should().Be("26.04.20");
     }
 
     [Fact]
-    public void IsSettingNew_ReturnsFalse_WhenAddedAtOrBeforeBaseline()
+    public void NoUpgrade_WithShowNewBadgesTrue_StaysTrue()
     {
-        // First init writes LastRunVersion = whatever GetAppVersion() returns at runtime
-        new NewBadgeService(_prefs.Object, _log.Object).Initialize();
-        // Override baseline to be newer than any test setting
-        _store["NewBadgeBaseline"] = "99.99.99";
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion] = "26.04.20";
 
-        // Second init: same version branch -> loads baseline = "99.99.99"
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
-        sut.Initialize();
+        var sut = CreateSut();
 
-        sut.IsSettingNew("26.04.05", "setting1").Should().BeFalse();
+        sut.Initialize(new[] { "26.04.20" });
+
+        sut.ShowNewBadges.Should().BeTrue(); // default
     }
+
+    [Fact]
+    public void NoUpgrade_AfterEffectiveUpgrade_PreservesNewBadgesAcrossRuns()
+    {
+        // Simulate the state written by Branch B on a previous launch:
+        // user was on 26.04.17 when they upgraded to a build with 26.04.21 settings.
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion] = "26.04.21";
+        _store["NewBadgeBaseline"] = "26.04.17";
+
+        var sut = CreateSut();
+        sut.Initialize(new[] { "26.04.21", "26.04.17", "26.03.01" });
+
+        // Baseline should still be 26.04.17 — the badge added in 26.04.21 must still show.
+        sut.IsSettingNew("26.04.21", "s1").Should().BeTrue();
+        sut.IsSettingNew("26.04.17", "s2").Should().BeFalse();
+        sut.IsSettingNew("26.03.01", "s3").Should().BeFalse();
+
+        // And HighestSeenAddedInVersion stays at 26.04.21 (no new upgrade).
+        _store[UserPreferenceKeys.HighestSeenAddedInVersion].Should().Be("26.04.21");
+    }
+
+    // --- General IsSettingNew behaviour ---
 
     [Fact]
     public void IsSettingNew_ReturnsFalse_WhenAddedInVersionIsNullOrEmpty()
     {
-        var sut = new NewBadgeService(_prefs.Object, _log.Object);
-        sut.Initialize();
+        var sut = CreateSut();
+        sut.Initialize(new[] { "26.04.20" });
 
-        sut.IsSettingNew(null, "setting1").Should().BeFalse();
-        sut.IsSettingNew("", "setting2").Should().BeFalse();
+        sut.IsSettingNew(null, "s1").Should().BeFalse();
+        sut.IsSettingNew("", "s2").Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsSettingNew_ReturnsFalse_WhenAddedInVersionUnparseable()
+    {
+        var sut = CreateSut();
+        sut.Initialize(new[] { "26.04.20" });
+
+        sut.IsSettingNew("not-a-version", "s1").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Initialize_WritesLastRunVersion_ForFutureMigrationUse()
+    {
+        var sut = CreateSut();
+        sut.Initialize(new[] { "26.04.20" });
+
+        _store.ContainsKey("LastRunVersion").Should().BeTrue();
+    }
+
+    // --- Contributor typo guard: every AddedInVersion in the built registry must parse ---
+
+    [Fact]
+    public async Task AllAddedInVersions_InBuiltRegistry_ParseViaSystemVersion()
+    {
+        // Arrange: spin up a real CompatibleSettingsRegistry with passthrough filters.
+        var windowsFilter = new Mock<IWindowsCompatibilityFilter>();
+        windowsFilter
+            .Setup(f => f.FilterSettingsByWindowsVersion(It.IsAny<IEnumerable<SettingDefinition>>()))
+            .Returns((IEnumerable<SettingDefinition> s) => s.ToList());
+        windowsFilter
+            .Setup(f => f.FilterSettingsByWindowsVersion(It.IsAny<IEnumerable<SettingDefinition>>(), It.IsAny<bool>()))
+            .Returns((IEnumerable<SettingDefinition> s, bool _) => s.ToList());
+
+        var hardwareFilter = new Mock<IHardwareCompatibilityFilter>();
+        hardwareFilter
+            .Setup(f => f.FilterSettingsByHardwareAsync(It.IsAny<IEnumerable<SettingDefinition>>()))
+            .ReturnsAsync((IEnumerable<SettingDefinition> s) => s.ToList());
+
+        var powerValidation = new Mock<IPowerSettingsValidationService>();
+        powerValidation
+            .Setup(f => f.FilterSettingsByExistenceAsync(It.IsAny<IEnumerable<SettingDefinition>>()))
+            .ReturnsAsync((IEnumerable<SettingDefinition> s) => s.ToList());
+
+        var registry = new CompatibleSettingsRegistry(
+            windowsFilter.Object,
+            hardwareFilter.Object,
+            powerValidation.Object,
+            new Mock<ILogService>().Object);
+
+        await registry.InitializeAsync();
+
+        // Act: enumerate every AddedInVersion in the registry (filtered + bypassed maps).
+        var allVersions = new List<(string featureId, string settingId, string addedInVersion)>();
+        foreach (var kvp in registry.GetAllFilteredSettings())
+            foreach (var s in kvp.Value)
+                if (!string.IsNullOrWhiteSpace(s.AddedInVersion))
+                    allVersions.Add((kvp.Key, s.Id, s.AddedInVersion!));
+        foreach (var kvp in registry.GetAllBypassedSettings())
+            foreach (var s in kvp.Value)
+                if (!string.IsNullOrWhiteSpace(s.AddedInVersion))
+                    allVersions.Add((kvp.Key, s.Id, s.AddedInVersion!));
+
+        // Assert: every AddedInVersion parses as a System.Version.
+        var failures = new List<string>();
+        foreach (var (featureId, settingId, addedInVersion) in allVersions)
+        {
+            var normalised = addedInVersion.Trim().TrimStart('v');
+            if (!Version.TryParse(normalised, out _))
+                failures.Add($"{featureId}:{settingId} AddedInVersion=\"{addedInVersion}\" is not parseable");
+        }
+
+        failures.Should().BeEmpty(
+            "every AddedInVersion string must be parseable by System.Version (format YY.MM.DD)");
     }
 }

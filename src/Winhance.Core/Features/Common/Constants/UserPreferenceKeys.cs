@@ -14,6 +14,7 @@ public static class UserPreferenceKeys
     public const string ShowTechnicalDetails = "ShowTechnicalDetails";
     public const string ShowInfoBadges = "ShowInfoBadges";
     public const string ShowNewBadges = "ShowNewBadges";
+    public const string HighestSeenAddedInVersion = "HighestSeenAddedInVersion";
 }
 
 public static class DebugFlags

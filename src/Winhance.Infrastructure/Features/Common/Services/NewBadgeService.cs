@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Winhance.Core.Features.Common.Constants;
 using Winhance.Core.Features.Common.Interfaces;
@@ -23,38 +25,76 @@ public class NewBadgeService : INewBadgeService
         set => _prefs.SetPreferenceAsync(UserPreferenceKeys.ShowNewBadges, value);
     }
 
-    public void Initialize()
+    public void Initialize(IEnumerable<string?> allAddedInVersions)
     {
-        var currentVersionStr = GetAppVersion();
-        var lastRunStr = _prefs.GetPreference("LastRunVersion", "");
+        // Keep writing LastRunVersion for future migration use — it no longer drives badges.
+        var currentAssemblyVersion = GetAppVersion();
+        _prefs.SetPreferenceAsync("LastRunVersion", currentAssemblyVersion);
 
-        if (string.IsNullOrEmpty(lastRunStr))
+        // Compute the highest AddedInVersion present in the loaded registry.
+        Version? highestInRegistry = null;
+        if (allAddedInVersions != null)
         {
-            // First run with badge system — set baseline to 0.0.0 so all tagged settings show as new
+            foreach (var raw in allAddedInVersions)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+                if (!TryParseVersion(raw, out var parsed))
+                    continue;
+                if (highestInRegistry is null || parsed > highestInRegistry)
+                    highestInRegistry = parsed;
+            }
+        }
+
+        var storedHighestStr = _prefs.GetPreference(
+            UserPreferenceKeys.HighestSeenAddedInVersion, "");
+
+        // Branch A: no HighestSeenAddedInVersion stored — either a first-ever install or
+        // a returning user whose preferences predate the badge system. Both get the same
+        // treatment: baseline = 0.0.0 so every tagged setting shows as NEW. Without this,
+        // a first-install user would see no badges at all and the View menu's NEW toggle
+        // would appear inert.
+        if (string.IsNullOrEmpty(storedHighestStr))
+        {
             _baseline = new Version(0, 0, 0);
-            _prefs.SetPreferenceAsync("LastRunVersion", currentVersionStr);
-            _prefs.SetPreferenceAsync("NewBadgeBaseline", "0.0.0");
-            ShowNewBadges = true;
-            _logService.LogInformation($"[NewBadge] First run with badge system. Baseline set to 0.0.0");
+            if (highestInRegistry is not null)
+            {
+                _prefs.SetPreferenceAsync(
+                    UserPreferenceKeys.HighestSeenAddedInVersion,
+                    VersionToString(highestInRegistry));
+            }
+            _prefs.SetPreferenceAsync("NewBadgeBaseline", VersionToString(_baseline));
+            // Do NOT touch ShowNewBadges — leave whatever the user already has.
+            _logService.LogInformation(
+                "[NewBadge] No stored HighestSeenAddedInVersion. Baseline set to 0.0.0 (all tagged settings treated as new).");
             return;
         }
 
-        if (!lastRunStr.Equals(currentVersionStr, StringComparison.OrdinalIgnoreCase))
+        var stored = TryParseVersion(storedHighestStr, out var s) ? s : new Version(0, 0, 0);
+
+        // Branch B: effective upgrade detected — new settings added to the registry since last run.
+        if (highestInRegistry is not null && highestInRegistry > stored)
         {
-            // Version changed — upgrade detected; force NEW badges back on
-            _baseline = ParseVersion(lastRunStr);
-            _prefs.SetPreferenceAsync("NewBadgeBaseline", lastRunStr);
-            _prefs.SetPreferenceAsync("LastRunVersion", currentVersionStr);
+            _baseline = stored;
+            _prefs.SetPreferenceAsync(
+                UserPreferenceKeys.HighestSeenAddedInVersion,
+                VersionToString(highestInRegistry));
+            _prefs.SetPreferenceAsync("NewBadgeBaseline", VersionToString(stored));
             ShowNewBadges = true;
-            _logService.LogInformation($"[NewBadge] Upgrade detected: {lastRunStr} -> {currentVersionStr}. Baseline set to {lastRunStr}; ShowNewBadges reset to true");
+            _logService.LogInformation(
+                $"[NewBadge] Effective upgrade: registry highest {highestInRegistry} > stored {stored}. " +
+                $"Baseline={stored}; ShowNewBadges reset to true.");
             return;
         }
 
-        // Same version — load existing baseline, leave ShowNewBadges as-is
-        var baselineStr = _prefs.GetPreference("NewBadgeBaseline", currentVersionStr);
-        _baseline = ParseVersion(baselineStr);
-
-        _logService.LogDebug($"[NewBadge] Same version {currentVersionStr}. Baseline={baselineStr}, ShowNewBadges={ShowNewBadges}");
+        // Branch C: no upgrade since last run — use the stored NewBadgeBaseline so NEW
+        // badges persist across app launches until the next upgrade. Falling back to
+        // `stored` would advance the baseline every run and hide badges immediately
+        // after the first post-upgrade launch.
+        var storedBaselineStr = _prefs.GetPreference("NewBadgeBaseline", "");
+        _baseline = TryParseVersion(storedBaselineStr, out var b) ? b : stored;
+        _logService.LogDebug(
+            $"[NewBadge] No upgrade. Baseline={_baseline}, ShowNewBadges={ShowNewBadges}.");
     }
 
     public bool IsSettingNew(string? addedInVersion, string settingId)
@@ -62,7 +102,9 @@ public class NewBadgeService : INewBadgeService
         if (string.IsNullOrEmpty(addedInVersion))
             return false;
 
-        var settingVersion = ParseVersion(addedInVersion);
+        if (!TryParseVersion(addedInVersion, out var settingVersion))
+            return false;
+
         return settingVersion > _baseline;
     }
 
@@ -79,9 +121,21 @@ public class NewBadgeService : INewBadgeService
         return version;
     }
 
-    private static Version ParseVersion(string versionStr)
+    private static bool TryParseVersion(string versionStr, out Version parsed)
     {
-        versionStr = versionStr.TrimStart('v');
-        return Version.TryParse(versionStr, out var v) ? v : new Version(0, 0, 0);
+        if (string.IsNullOrWhiteSpace(versionStr))
+        {
+            parsed = new Version(0, 0, 0);
+            return false;
+        }
+        versionStr = versionStr.Trim().TrimStart('v');
+        return Version.TryParse(versionStr, out parsed!);
+    }
+
+    private static string VersionToString(Version v)
+    {
+        // Version.Build is -1 when not specified; normalise to 0.
+        var build = v.Build < 0 ? 0 : v.Build;
+        return $"{v.Major}.{v.Minor}.{build}";
     }
 }
