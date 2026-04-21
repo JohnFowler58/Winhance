@@ -426,6 +426,8 @@
   "Setting_explorer-customization-hide-empty-drives_Description": "Skrývá jednotky bez vloženého média, jako jsou prázdné čtečky karet nebo optické jednotky",
   "Setting_explorer-customization-show-file-ext_Name": "Zobrazit přípony souborů",
   "Setting_explorer-customization-show-file-ext_Description": "Zobrazuje přípony typů souborů (jako .txt, .pdf) za názvy souborů",
+  "Setting_explorer-customization-show-lnk-extension_Name": "Zobrazit příponu souboru .lnk",
+  "Setting_explorer-customization-show-lnk-extension_Description": "Zobrazí příponu .lnk u souborů zástupců, pokud jsou přípony souborů povoleny. Pomáhá odhalit škodlivé zástupce maskované jako složky nebo dokumenty.",
   "Setting_explorer-enable-photo-viewer_Name": "Povolit prohlížeč fotografií Windows",
   "Setting_explorer-enable-photo-viewer_Description": "Obnovit starší Prohlížeč fotografií Windows a nastavit jej jako výchozí program pro běžné formáty obrazových souborů",
   "Setting_explorer-customization-legacy-notepad_Name": "Použít starý Poznámkový blok pro textové soubory",

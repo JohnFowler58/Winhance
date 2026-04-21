@@ -409,6 +409,8 @@
     "Setting_explorer-customization-hide-empty-drives_Description": "يخفي محركات الأقراص بدون وسائط مثل قارئات البطاقات الفارغة أو محركات الأقراص الضوئية",
     "Setting_explorer-customization-show-file-ext_Name": "إظهار امتدادات الملفات",
     "Setting_explorer-customization-show-file-ext_Description": "يعرض امتدادات نوع الملف (مثل .txt و .pdf) بعد أسماء الملفات",
+    "Setting_explorer-customization-show-lnk-extension_Name": "إظهار امتداد ملف .lnk",
+    "Setting_explorer-customization-show-lnk-extension_Description": "يعرض الامتداد .lnk على ملفات الاختصار عند تمكين امتدادات الملفات. يساعد في اكتشاف الاختصارات الضارة المتنكرة في هيئة مجلدات أو مستندات.",
     "Setting_explorer-enable-photo-viewer_Name": "تمكين Windows Photo Viewer",
     "Setting_explorer-enable-photo-viewer_Description": "استعادة عارض الصور القديم في Windows وتعيينه كبرنامج افتراضي لصيغ الصور الشائعة",
     "Setting_explorer-customization-legacy-notepad_Name": "استخدام المفكرة القديمة لملفات النص",

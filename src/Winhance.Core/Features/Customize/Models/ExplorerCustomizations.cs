@@ -1247,6 +1247,42 @@ if (-not (Test-Path $icoPath)) {
                 },
                 new SettingDefinition
                 {
+                    Id = "explorer-customization-show-lnk-extension",
+                    IsSubjectivePreference = true,
+                    RecommendedToggleState = true,
+                    Name = "Show .lnk file extension",
+                    Description = "Shows the .lnk extension on shortcut files when file extensions are enabled. Helps spot malicious shortcuts disguised as folders or documents.",
+                    GroupName = "Files and Folders",
+                    InputType = InputType.Toggle,
+                    IconPack = "Fluent",
+                    Icon = "DocumentQuestionMark",
+                    AddedInVersion = "26.04.21",
+                    RestartProcess = "Explorer",
+                    RegistrySettings = new List<RegistrySetting>
+                    {
+                        new RegistrySetting
+                        {
+                            KeyPath = @"HKEY_CLASSES_ROOT\lnkfile",
+                            ValueName = "NeverShowExt",
+                            RecommendedValue = null,
+                            EnabledValue = [null],
+                            DisabledValue = [""],
+                            DefaultValue = "",
+                            ValueType = RegistryValueKind.String,
+                        },
+                    },
+                    Dependencies = new List<SettingDependency>
+                    {
+                        new SettingDependency
+                        {
+                            DependencyType = SettingDependencyType.RequiresEnabled,
+                            DependentSettingId = "explorer-customization-show-lnk-extension",
+                            RequiredSettingId = "explorer-customization-show-file-ext",
+                        },
+                    },
+                },
+                new SettingDefinition
+                {
                     Id = "explorer-enable-photo-viewer",
                     IsSubjectivePreference = true,
                     RecommendedToggleState = false,

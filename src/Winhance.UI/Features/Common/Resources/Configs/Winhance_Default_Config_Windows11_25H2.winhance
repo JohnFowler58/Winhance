@@ -580,6 +580,12 @@
             "InputType": 0
           },
           {
+            "Id": "explorer-customization-show-lnk-extension",
+            "Name": "Show .lnk file extension",
+            "IsSelected": false,
+            "InputType": 0
+          },
+          {
             "Id": "explorer-enable-photo-viewer",
             "Name": "Enable Windows Photo Viewer",
             "IsSelected": false,

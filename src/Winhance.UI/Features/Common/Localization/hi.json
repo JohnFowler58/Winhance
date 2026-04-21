@@ -426,6 +426,8 @@
   "Setting_explorer-customization-hide-empty-drives_Description": "खाली कार्ड रीडर या ऑप्टिकल ड्राइव जैसे बिना मीडिया डाले ड्राइव छिपाता है",
   "Setting_explorer-customization-show-file-ext_Name": "फ़ाइल एक्सटेंशन दिखाएँ",
   "Setting_explorer-customization-show-file-ext_Description": "फ़ाइल नामों के बाद फ़ाइल प्रकार एक्सटेंशन (जैसे .txt, .pdf) प्रदर्शित करता है",
+  "Setting_explorer-customization-show-lnk-extension_Name": ".lnk फ़ाइल एक्सटेंशन दिखाएँ",
+  "Setting_explorer-customization-show-lnk-extension_Description": "जब फ़ाइल एक्सटेंशन सक्षम हों तो शॉर्टकट फ़ाइलों पर .lnk एक्सटेंशन दिखाता है। फ़ोल्डर या दस्तावेज़ों के रूप में छिपे दुर्भावनापूर्ण शॉर्टकट को पहचानने में मदद करता है।",
   "Setting_explorer-enable-photo-viewer_Name": "विंडोज फोटो व्यूअर सक्षम करें",
   "Setting_explorer-enable-photo-viewer_Description": "विरासत विंडोज फोटो व्यूअर को पुनर्स्थापित करें और इसे सामान्य छवि फ़ाइल स्वरूपों के लिए डिफ़ॉल्ट प्रोग्राम के रूप में सेट करें",
   "Setting_explorer-customization-legacy-notepad_Name": "टेक्स्ट फाइलों के लिए लेगेसी नोटपैड का उपयोग करें",
